@@ -40,6 +40,21 @@ class User(AbstractUser):
     position = models.CharField(max_length=100, blank=True, verbose_name='Должность')
     type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='buyer', verbose_name='Тип пользователя')
     
+    groups = models.ManyToManyField(
+        'auth.Group',
+        verbose_name=('groups'),
+        blank=True,
+        related_name="retail_procurement_user_set",
+        related_query_name="user",
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        verbose_name=('user permissions'),
+        blank=True,
+        related_name="retail_procurement_user_permissions_set",
+        related_query_name="user",
+    )
+
     REQUIRED_FIELDS = ['email']
 
     class Meta:
