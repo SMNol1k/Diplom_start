@@ -22,6 +22,12 @@ from .serializers import (
     OrderItemCreateSerializer, PasswordResetSerializer
 )
 
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+from django.template.loader import render_to_string
+from django.urls import reverse # Для генерации URL
+from django.contrib.sites.shortcuts import get_current_site # Для получения домена сайта
 
 class RegisterView(generics.CreateAPIView):
     """Регистрация нового пользователя"""
@@ -146,30 +152,35 @@ class BasketViewSet(viewsets.ViewSet):
             user=request.user,
             status='basket'
         )
-
-        serializer = OrderItemCreateSerializer(data=request.data, many=isinstance(request.data, list))
+        # Используем OrderItemSerializer для валидации и установки цены
+        # Передаем order_id для контекста
+        serializer = OrderItemCreateSerializer(
+            data=request.data, 
+            many=isinstance(request.data, list),
+            context={'request': request}
+            )
         serializer.is_valid(raise_exception=True)
 
         items_data = serializer.validated_data if isinstance(serializer.validated_data, list) else [serializer.validated_data]
 
-        for item_data in items_data:
-            product_info = get_object_or_404(ProductInfo, id=item_data['product_info_id'])
-            
-            if product_info.quantity < item_data['quantity']:
-                return Response(
-                    {'error': f'Недостаточно товара {product_info.product.name} на складе'},
-                    status=status.HTTP_400_BAD_REQUEST
+        with transaction.atomic():
+            for item_data in items_data:
+                product_info = item_data['product_info_id'] # уже объект благодаря PrimaryKeyRelatedField
+                quantity = item_data['quantity']
+                price = item_data['price']
+
+                order_item, created = OrderItem.objects.get_or_create(
+                    order=basket,
+                    product_info=product_info,
+                    defaults={'quantity': quantity,
+                              'price': price,
+                              }
                 )
 
-            order_item, created = OrderItem.objects.get_or_create(
-                order=basket,
-                product_info=product_info,
-                defaults={'quantity': item_data['quantity'], 'price': product_info.price}
-            )
-
-            if not created:
-                order_item.quantity += item_data['quantity']
-                order_item.save()
+                if not created:
+                    order_item.quantity += quantity
+                    order_item.price = price
+                    order_item.save()
 
         basket_serializer = OrderSerializer(basket)
         return Response(basket_serializer.data, status=status.HTTP_201_CREATED)
@@ -178,20 +189,30 @@ class BasketViewSet(viewsets.ViewSet):
     def update_items(self, request):
         """Обновить количество товаров в корзине"""
         basket = get_object_or_404(Order, user=request.user, status='basket')
-        
-        serializer = OrderItemCreateSerializer(data=request.data, many=isinstance(request.data, list))
+
+        # Используем OrderItemSerializer для валидации и установки цены
+        serializer = OrderItemCreateSerializer(data=request.data, 
+                                               many=isinstance(request.data, list),
+                                               context={'request': request}
+                                               )
         serializer.is_valid(raise_exception=True)
 
         items_data = serializer.validated_data if isinstance(serializer.validated_data, list) else [serializer.validated_data]
 
-        for item_data in items_data:
-            order_item = get_object_or_404(
-                OrderItem, 
-                order=basket, 
-                product_info_id=item_data['product_info_id']
-            )
-            order_item.quantity = item_data['quantity']
-            order_item.save()
+        with transaction.atomic():
+            for item_data in items_data:
+                product_info = item_data['product_info']
+                quantity = item_data['quantity']
+                price = item_data['price']
+
+                order_item = get_object_or_404(
+                    OrderItem, 
+                    order=basket, 
+                    product_info=product_info
+                )
+                order_item.quantity = quantity
+                order_item.price = price
+                order_item.save()
 
         basket_serializer = OrderSerializer(basket)
         return Response(basket_serializer.data)
@@ -201,14 +222,23 @@ class BasketViewSet(viewsets.ViewSet):
         """Удалить товары из корзины"""
         basket = get_object_or_404(Order, user=request.user, status='basket')
         
-        items_to_delete = request.data.get('items', [])
-        if not items_to_delete:
+        items_to_delete_ids = request.data.get('items', [])
+        if not items_to_delete_ids:
             return Response({'error': 'Не указаны товары для удаления'}, status=status.HTTP_400_BAD_REQUEST)
 
-        OrderItem.objects.filter(order=basket, product_info_id__in=items_to_delete).delete()
+        # Проверяем, что все ID существуют в корзине пользователя
+        existing_items_count = OrderItem.objects.filter(
+            order=basket,
+            product_info_id__in=items_to_delete_ids
+        ).count()
+
+        if existing_items_count != len(items_to_delete_ids):
+            return Response({'error': 'Один или несколько товаров не найдены в вашей корзине'}, status=status.HTTP_400_BAD_REQUEST)        
+
+        OrderItem.objects.filter(order=basket, product_info_id__in=items_to_delete_ids).delete()
 
         basket_serializer = OrderSerializer(basket)
-        return Response(basket_serializer.data)
+        return Response(basket_serializer.data, status=status.HTTP_200_OK)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -218,14 +248,14 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        queryset = Order.objects.exclude(status='basket').select_related('contact', 'user').prefetch_related('order_items__product_info__product')
+        
         if user.type == 'supplier' and hasattr(user, 'shop'):
             # Поставщик видит заказы, содержащие его товары
-            return Order.objects.filter(
-                order_items__product_info__shop=user.shop
-            ).exclude(status='basket').distinct().order_by('-dt')
+            return queryset.filter(order_items__product_info__shop=user.shop).distinct().order_by('-dt')
         else:
             # Покупатель видит свои заказы
-            return Order.objects.filter(user=user).exclude(status='basket')
+            return queryset.filter(user=user).order_by('-dt')
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
@@ -242,6 +272,17 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Корзина пуста'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
+            # Проверяем наличие всех товаров в корзине перед подтверждением
+            for item in basket.order_items.all():
+                if item.product_info.quantity < item.quantity:
+                    return Response(
+                        {'error': f'Недостаточно товара "{item.product_info.product.name}" на складе магазина "{item.product_info.shop.name}". Доступно: {item.product_info.quantity}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Уменьшаем количество товара на складе
+                item.product_info.quantity -= item.quantity
+                item.product_info.save()
+
             basket.contact = contact
             basket.status = 'new'
             basket.save()
@@ -253,10 +294,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             self._send_order_notification_to_suppliers(basket)
 
         serializer = self.get_serializer(basket)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def _send_order_confirmation_email(self, order):
         """Отправка подтверждения заказа клиенту"""
+        order_items = order.order_items.select_related('product_info__product').all()
         subject = f'Заказ №{order.id} принят'
         message = f'''
         Здравствуйте, {order.user.first_name or order.user.username}!
@@ -265,9 +307,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         
         Товары:
         '''
-        for item in order.order_items.all():
+        for item in order_items:
             message += f'\n- {item.product_info.product.name} x {item.quantity} = {item.total_price} руб.'
-        
+
         message += f'\n\nОбщая сумма: {order.total_sum} руб.'
         message += f'\n\nАдрес доставки: {order.contact}'
 
@@ -281,12 +323,14 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def _send_order_notification_to_suppliers(self, order):
         """Отправка уведомления о заказе поставщикам"""
+        order_items = order.order_items.select_related('product_info__shop', 'product_info__product').all()
+        
         shops = set()
-        for item in order.order_items.all():
+        for item in order.order_items:
             shops.add(item.product_info.shop)
 
         for shop in shops:
-            shop_items = order.order_items.filter(product_info__shop=shop)
+            shop_items = [item for item in order_items if item.product_info.shop == shop]
             
             subject = f'Новый заказ №{order.id}'
             message = f'''
@@ -318,10 +362,12 @@ class SupplierViewSet(viewsets.ViewSet):
         if request.user.type != 'supplier':
             return Response({'error': 'Доступ только для поставщиков'}, status=status.HTTP_403_FORBIDDEN)
 
-        if not hasattr(request.user, 'shop'):
+        try:
+            shop = request.user.shop
+        except Shop.DoesNotExist:
             return Response({'error': 'У пользователя нет магазина'}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = ShopSerializer(request.user.shop)
+        
+        serializer = ShopSerializer(shop)
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
@@ -330,17 +376,19 @@ class SupplierViewSet(viewsets.ViewSet):
         if request.user.type != 'supplier':
             return Response({'error': 'Доступ только для поставщиков'}, status=status.HTTP_403_FORBIDDEN)
 
-        if not hasattr(request.user, 'shop'):
+        try:
+            shop = request.user.shop
+        except Shop.DoesNotExist:
             return Response({'error': 'У пользователя нет магазина'}, status=status.HTTP_404_NOT_FOUND)
 
         state = request.data.get('state')
-        if state is None:
-            return Response({'error': 'Не указан параметр state'}, status=status.HTTP_400_BAD_REQUEST)
+        if state is None or not isinstance(state, bool):
+            return Response({'error': 'Не указан или неверный параметр state (ожидается true/false)'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        shop.state = state
+        shop.save()
 
-        request.user.shop.state = state
-        request.user.shop.save()
-
-        return Response({'status': 'Статус обновлен', 'state': request.user.shop.state})
+        return Response({'status': 'Статус обновлен', 'state': shop.state}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def update_price(self, request):
@@ -348,9 +396,11 @@ class SupplierViewSet(viewsets.ViewSet):
         if request.user.type != 'supplier':
             return Response({'error': 'Доступ только для поставщиков'}, status=status.HTTP_403_FORBIDDEN)
 
-        if not hasattr(request.user, 'shop'):
+        try:
+            shop = request.user.shop
+        except Shop.DoesNotExist:
             return Response({'error': 'У пользователя нет магазина'}, status=status.HTTP_404_NOT_FOUND)
-
+        
         url = request.data.get('url')
         if not url:
             return Response({'error': 'Не указан URL прайс-листа'}, status=status.HTTP_400_BAD_REQUEST)
@@ -359,10 +409,12 @@ class SupplierViewSet(viewsets.ViewSet):
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             data = yaml.safe_load(response.content)
+        except requests.exceptions.RequestException as e:
+            return Response({'error': f'Ошибка при запросе к URL: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        except yaml.YAMLError as e:
+            return Response({'error': f'Ошибка парсинга YAML файла: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({'error': f'Ошибка загрузки файла: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
-
-        shop = request.user.shop
+            return Response({'error': f'Неизвестная ошибка при загрузке файла: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             # Обновляем информацию о магазине
@@ -372,23 +424,48 @@ class SupplierViewSet(viewsets.ViewSet):
 
             # Обрабатываем категории
             categories_map = {}
+            current_shop_categories_ids = set(shop.categories.values_list('id', flat=True))
+            new_categories_ids = set()
+
             for cat_data in data.get('categories', []):
-                category, _ = Category.objects.get_or_create(
-                    id=cat_data['id'],
-                    defaults={'name': cat_data['name']}
+                cat_id = cat_data.get('id')
+                cat_name = cat_data.get('name')
+
+                if not cat_id or not cat_name:
+                    category, created = Category.objects.get_or_create(
+                    id=cat_id,
+                    defaults={'name': cat_name}
                 )
-                categories_map[cat_data['id']] = category
+                if not created:
+                    # Если категория уже существует, обновляем имя на случай изменения
+                    if category.name != cat_name:
+                        category.name = cat_name
+                        category.save()
+
+                categories_map[cat_id] = category
+                new_categories_ids.add(cat_id)
+
+                # Добавляем категорию к магазину, если ее нет
                 if category not in shop.categories.all():
                     shop.categories.add(category)
+
+            # Удаляем категории, которые были у магазина, но отсутствуют в новом прайс-листе
+            categories_to_remove_ids = current_shop_categories_ids - new_categories_ids
+            if categories_to_remove_ids:
+                shop.categories.remove(*Category.objects.filter(id__in=categories_to_remove_ids))
 
             # Удаляем старые товары магазина
             ProductInfo.objects.filter(shop=shop).delete()
 
             # Добавляем новые товары
             for item_data in data.get('goods', []):
-                category = categories_map.get(item_data['category'])
+                required_fields = ['id', 'name', 'category', 'quantity', 'price', 'price_rrc']
+                if not all(field in item_data for field in required_fields):
+                    category = categories_map.get(item_data['category'])
+                    category_id = item_data['category']
+                    category = categories_map.get(category_id)
                 if not category:
-                    continue
+                    continue # Пропускаем товар без валидной категории
 
                 product, _ = Product.objects.get_or_create(
                     name=item_data['name'],
@@ -407,6 +484,9 @@ class SupplierViewSet(viewsets.ViewSet):
 
                 # Добавляем параметры товара
                 for param_name, param_value in item_data.get('parameters', {}).items():
+                    if not param_name or not param_value:
+                        continue # Пропускаем невалидный параметр
+
                     parameter, _ = Parameter.objects.get_or_create(name=param_name)
                     ProductParameter.objects.create(
                         product_info=product_info,
@@ -414,7 +494,7 @@ class SupplierViewSet(viewsets.ViewSet):
                         value=param_value
                     )
 
-        return Response({'status': 'Прайс-лист успешно загружен'})
+        return Response({'status': 'Прайс-лист успешно загружен'}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -427,16 +507,36 @@ def password_reset_request(request):
     email = serializer.validated_data['email']
     try:
         user = User.objects.get(email=email)
-        # В реальном приложении здесь нужно сгенерировать токен и отправить ссылку
-        # Для демонстрации просто отправим уведомление
+
+        # Генерация токена сброса пароля
+        current_site = get_current_site(request)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = PasswordResetTokenGenerator().make_token(user)
+
+        reset_url = f"http://{current_site.domain}{reverse('password-reset-confirm', kwargs={'uidb64': uid, 'token': token})}"
+        # Внимание: 'password-reset-confirm' - это имя URL, которое добавлено в urls.py
+
+        subject = 'Сброс пароля для вашего аккаунта'
+        message = render_to_string('email/password_reset_email.html', {
+            'user': user,
+            'domain': current_site.domain,
+            'uid': uid,
+            'token': token,
+            'reset_url': reset_url, # Передаем сгенерированный URL
+        })
+
         send_mail(
-            'Сброс пароля',
-            f'Для сброса пароля перейдите по ссылке: http://example.com/reset-password',
+            subject,
+            message,
             settings.DEFAULT_FROM_EMAIL,
             [email],
-            fail_silently=True,
+            fail_silently=False, # Устанавливаем False, чтобы видеть ошибки отправки в консоли
         )
-        return Response({'status': 'Письмо отправлено'})
+        return Response({'status': 'Письмо для сброса пароля отправлено'}, status=status.HTTP_200_OK)
     except User.DoesNotExist:
         # Не сообщаем, что пользователь не найден (безопасность)
-        return Response({'status': 'Письмо отправлено'})
+        return Response({'status': 'Письмо для сброса пароля отправлено'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        # Логируем ошибку отправки почты
+        print(f"Ошибка при отправке письма для сброса пароля: {e}")
+        return Response({'error': 'Произошла ошибка при отправке письма'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

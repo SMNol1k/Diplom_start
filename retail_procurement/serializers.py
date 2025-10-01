@@ -132,10 +132,18 @@ class OrderItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'price']
 
     def validate(self, attrs):
-        # Автоматически устанавливаем цену из ProductInfo
         product_info = attrs.get('product_info')
-        if product_info:
+        quantity = attrs.get('quantity')
+
+        if product_info and quantity:
+            # Автоматически устанавливаем цену из ProductInfo
             attrs['price'] = product_info.price
+
+            # Проверяем наличие товара на складе
+            if product_info.quantity < quantity:
+                raise serializers.ValidationError(
+                    {'quantity': f'Недостаточно товара "{product_info.product.name}" на складе. Доступно: {product_info.quantity}'}
+                )   
         return attrs
 
 
