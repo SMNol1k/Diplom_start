@@ -14,7 +14,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 import yaml
 import requests
-
+from django.core.exceptions import ObjectDoesNotExist
 
 from .models import (
     User, Shop, Category, Product, ProductInfo, Parameter, 
@@ -419,91 +419,123 @@ class SupplierViewSet(viewsets.ViewSet):
             response.raise_for_status()
             data = yaml.safe_load(response.content)
         except requests.exceptions.RequestException as e:
+            print(f"Ошибка при запросе к URL: {e}")  # Лог в консоль
             return Response({'error': f'Ошибка при запросе к URL: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         except yaml.YAMLError as e:
+            print(f"Ошибка парсинга YAML: {e}")
             return Response({'error': f'Ошибка парсинга YAML файла: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            print(f"Неизвестная ошибка при загрузке: {e}")
             return Response({'error': f'Неизвестная ошибка при загрузке файла: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
-            # Обновляем информацию о магазине
-            if 'shop' in data:
-                shop.name = data['shop']
-                shop.save()
+        if not data:
+            return Response({'error': 'Пустой YAML файл'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Обрабатываем категории
-            categories_map = {}
-            current_shop_categories_ids = set(shop.categories.values_list('id', flat=True))
-            new_categories_ids = set()
+        if 'shop' in data and data['shop']:
+            shop.name = data['shop']
+            shop.save()
+            print(f"Обновлено имя магазина: {shop.name}")
 
-            for cat_data in data.get('categories', []):
-                cat_id = cat_data.get('id')
-                cat_name = cat_data.get('name')
+        # Обрабатываем категории: создаём/обновляем по name, маппим по id из YAML
+        categories_map = {} 
+        current_shop_categories = set(shop.categories.values_list('id', flat=True))
+        new_categories_ids = set()
 
-                if not cat_id or not cat_name:
-                    category, created = Category.objects.get_or_create(
-                    id=cat_id,
-                    defaults={'name': cat_name}
-                )
-                if not created:
-                    # Если категория уже существует, обновляем имя на случай изменения
-                    if category.name != cat_name:
-                        category.name = cat_name
-                        category.save()
+        for cat_data in data.get('categories', []):
+            cat_id = cat_data.get('id')  # ID из YAML (для маппинга)
+            cat_name = cat_data.get('name')
+            if not cat_name:
+                print(f"Пропущена категория без name: {cat_data}")
+                continue
 
+            category, created = Category.objects.get_or_create(name=cat_name)
+            if created:
+                print(f"Создана категория: {cat_name}")
+            else:
+                print(f"Найдена категория: {cat_name}")
+
+            if cat_id:
                 categories_map[cat_id] = category
-                new_categories_ids.add(cat_id)
+                new_categories_ids.add(category.id)
 
-                # Добавляем категорию к магазину, если ее нет
-                if category not in shop.categories.all():
-                    shop.categories.add(category)
+            if category not in shop.categories.all():
+                shop.categories.add(category)
 
-            # Удаляем категории, которые были у магазина, но отсутствуют в новом прайс-листе
-            categories_to_remove_ids = current_shop_categories_ids - new_categories_ids
-            if categories_to_remove_ids:
-                shop.categories.remove(*Category.objects.filter(id__in=categories_to_remove_ids))
+        # Удаляем категории магазина, которых нет в новом прайс-листе (по реальным ID)
+        categories_to_remove = current_shop_categories - new_categories_ids
+        if categories_to_remove:
+            shop.categories.remove(*Category.objects.filter(id__in=categories_to_remove))
+            print(f"Удалены категории магазина: {categories_to_remove}")
 
-            # Удаляем старые товары магазина
-            ProductInfo.objects.filter(shop=shop).delete()
+        # Поддержка 'goods' (список) или 'products' (словарь для совместимости)
+        items = data.get('goods', [])
+        if not items and 'products' in data:
+            items = [{'id': key, **value} for key, value in data['products'].items()]
+            print("Обработан 'products' как словарь, преобразован в список")
 
-            # Добавляем новые товары
-            for item_data in data.get('goods', []):
-                required_fields = ['id', 'name', 'category', 'quantity', 'price', 'price_rrc']
-                if not all(field in item_data for field in required_fields):
-                    category = categories_map.get(item_data['category'])
-                    category_id = item_data['category']
-                    category = categories_map.get(category_id)
-                if not category:
-                    continue # Пропускаем товар без валидной категории
+        if not items:
+            return Response({'error': "Нет товаров в YAML (ни 'goods', ни 'products')"}, status=status.HTTP_400_BAD_REQUEST)
 
-                product, _ = Product.objects.get_or_create(
-                    name=item_data['name'],
-                    category=category
-                )
+        updated_count = 0
+        with transaction.atomic():
+            for item_data in items:
+                try:
+                    required_fields = ['id', 'name', 'category', 'quantity', 'price']
+                    if not all(field in item_data for field in required_fields):
+                        print(f"Пропущен товар без обязательных полей: {item_data.get('name', 'Unknown')}")
+                        continue
 
-                product_info = ProductInfo.objects.create(
-                    product=product,
-                    shop=shop,
-                    external_id=item_data['id'],
-                    model=item_data.get('model', ''),
-                    quantity=item_data['quantity'],
-                    price=item_data['price'],
-                    price_rrc=item_data['price_rrc']
-                )
+                    external_id = str(item_data['id'])
+                    category_id_yaml = item_data['category']  # ID из YAML
+                    category = categories_map.get(category_id_yaml)
+                    if not category:
+                        print(f"Пропущен товар {external_id} без категории (ID {category_id_yaml}): {item_data.get('name', 'Unknown')}")
+                        continue
 
-                # Добавляем параметры товара
-                for param_name, param_value in item_data.get('parameters', {}).items():
-                    if not param_name or not param_value:
-                        continue # Пропускаем невалидный параметр
-
-                    parameter, _ = Parameter.objects.get_or_create(name=param_name)
-                    ProductParameter.objects.create(
-                        product_info=product_info,
-                        parameter=parameter,
-                        value=param_value
+                    product, _ = Product.objects.get_or_create(
+                        name=item_data['name'],
+                        defaults={'category': category}
                     )
 
-        return Response({'status': 'Прайс-лист успешно загружен'}, status=status.HTTP_200_OK)
+                    product_info, created = ProductInfo.objects.update_or_create(
+                        external_id=external_id,
+                        shop=shop,
+                        defaults={
+                            'product': product,
+                            'model': item_data.get('model', ''),
+                            'quantity': item_data['quantity'],
+                            'price': float(item_data['price']),
+                            'price_rrc': float(item_data.get('price_rrc', 0)) if item_data.get('price_rrc') is not None else None
+                        }
+                    )
+                    if created:
+                        print(f"Создана ProductInfo: {external_id} - {item_data['name']}")
+                    else:
+                        print(f"Обновлена ProductInfo: {external_id} - {item_data['name']}")
+
+                    for param_name, param_value in item_data.get('parameters', {}).items():
+                        if not param_name or param_value is None:
+                            continue
+                        param_value_str = str(param_value)
+                        parameter, _ = Parameter.objects.get_or_create(name=param_name)
+                        ProductParameter.objects.update_or_create(
+                            product_info=product_info,
+                            parameter=parameter,
+                            defaults={'value': param_value_str}
+                        )
+                        print(f"Добавлен/обновлён параметр: {param_name} = {param_value_str} для {external_id}")
+
+                    updated_count += 1
+
+                except Exception as e:
+                    print(f"Ошибка при обработке товара {item_data.get('id', 'Unknown')}: {e}")
+                    continue
+
+        return Response({
+            'status': 'Прайс-лист успешно загружен',
+            'updated_products': updated_count,
+            'message': f'Обработано {len(items)} товаров, обновлено {updated_count} в магазине "{shop.name}"'
+        }, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
