@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'retail_procurement',
+    'django_filters',
 ]
 
 SITE_ID = 1

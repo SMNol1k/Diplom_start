@@ -106,6 +106,7 @@ class Product(models.Model):
     """
     name = models.CharField(max_length=200, verbose_name='Название')
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products', verbose_name='Категория')
+    description = models.TextField(blank=True, verbose_name='Описание')
 
     class Meta:
         verbose_name = 'Товар'
@@ -178,6 +179,10 @@ class Contact(models.Model):
     Контактная информация / Адрес доставки
     """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contacts', verbose_name='Пользователь')
+    first_name = models.CharField(max_length=100, blank=True, verbose_name='Имя') # Добавлено
+    last_name = models.CharField(max_length=100, blank=True, verbose_name='Фамилия') # Добавлено
+    patronymic = models.CharField(max_length=100, blank=True, verbose_name='Отчество') # Добавлено
+    email = models.EmailField(blank=True, verbose_name='Email для контакта') # Добавлено
     city = models.CharField(max_length=100, verbose_name='Город')
     street = models.CharField(max_length=200, verbose_name='Улица')
     house = models.CharField(max_length=20, verbose_name='Дом')
@@ -191,7 +196,7 @@ class Contact(models.Model):
         verbose_name_plural = 'Контакты'
 
     def __str__(self):
-        return f'{self.city}, {self.street} {self.house}'
+        return f'{self.city}, {self.street} {self.house} ({self.first_name} {self.last_name})'
 
 
 class Order(models.Model):

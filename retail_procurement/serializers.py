@@ -63,7 +63,7 @@ class ContactSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Contact
-        fields = ['id', 'city', 'street', 'house', 'structure', 'building', 'apartment', 'phone']
+        fields = ['id', 'first_name', 'last_name', 'patronymic', 'email', 'city', 'street', 'house', 'structure', 'building', 'apartment', 'phone']
         read_only_fields = ['id']
 
 
@@ -91,7 +91,7 @@ class ProductSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'category']
+        fields = ['id', 'name', 'category', 'description']
         read_only_fields = ['id']
 
 

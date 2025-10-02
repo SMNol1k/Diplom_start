@@ -37,9 +37,9 @@ class CategoryAdmin(admin.ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     """Админка товаров"""
-    list_display = ['name', 'category']
+    list_display = ['name', 'category', 'description']
     list_filter = ['category']
-    search_fields = ['name']
+    search_fields = ['name', 'description']
 
 
 class ProductParameterInline(admin.TabularInline):
@@ -67,9 +67,9 @@ class ParameterAdmin(admin.ModelAdmin):
 @admin.register(Contact)
 class ContactAdmin(admin.ModelAdmin):
     """Админка контактов"""
-    list_display = ['user', 'city', 'street', 'house', 'phone']
+    list_display = ['user', 'first_name', 'last_name', 'city', 'street', 'house', 'phone']
     list_filter = ['city']
-    search_fields = ['user__username', 'city', 'street', 'phone']
+    search_fields = ['user__username', 'first_name', 'last_name', 'city', 'street', 'phone'] 
 
 
 class OrderItemInline(admin.TabularInline):

@@ -1,15 +1,20 @@
-from rest_framework import viewsets, status, generics
+from rest_framework import viewsets, status, generics, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authtoken.models import Token
+from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import login, logout
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.utils.encoding import force_str 
+from django.utils.http import urlsafe_base64_decode
 from django.core.mail import send_mail
 from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 import yaml
 import requests
+
 
 from .models import (
     User, Shop, Category, Product, ProductInfo, Parameter, 
@@ -19,7 +24,8 @@ from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer,
     ContactSerializer, ShopSerializer, CategorySerializer, 
     ProductInfoSerializer, OrderSerializer,
-    OrderItemCreateSerializer, PasswordResetSerializer
+    OrderItemCreateSerializer, PasswordResetSerializer,
+    PasswordResetConfirmSerializer
 )
 
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -112,6 +118,9 @@ class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для просмотра товаров"""
     serializer_class = ProductInfoSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter] # Добавлено
+    filterset_fields = ['shop', 'product__category'] # Фильтрация по shop_id и category_id
+    search_fields = ['product__name', 'product__description', 'model', 'product_parameters__value'] # Добавлено
 
     def get_queryset(self):
         queryset = ProductInfo.objects.select_related(
@@ -120,15 +129,15 @@ class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
             'product_parameters__parameter'
         ).filter(shop__state=True)
 
-        # Фильтрация по магазину
-        shop_id = self.request.query_params.get('shop_id')
-        if shop_id:
-            queryset = queryset.filter(shop_id=shop_id)
+        # # Фильтрация по магазину
+        # shop_id = self.request.query_params.get('shop_id')
+        # if shop_id:
+        #     queryset = queryset.filter(shop_id=shop_id)
 
-        # Фильтрация по категории
-        category_id = self.request.query_params.get('category_id')
-        if category_id:
-            queryset = queryset.filter(product__category_id=category_id)
+        # # Фильтрация по категории
+        # category_id = self.request.query_params.get('category_id')
+        # if category_id:
+        #     queryset = queryset.filter(product__category_id=category_id)
 
         return queryset
 
@@ -540,3 +549,24 @@ def password_reset_request(request):
         # Логируем ошибку отправки почты
         print(f"Ошибка при отправке письма для сброса пароля: {e}")
         return Response({'error': 'Произошла ошибка при отправке письма'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PasswordResetConfirmView(generics.GenericAPIView):
+    """Подтверждение сброса пароля"""
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
+    def post(self, request, uidb64, token):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = None
+        if user is not None and PasswordResetTokenGenerator().check_token(user, token):
+            user.set_password(serializer.validated_data['password'])
+            user.save()
+            return Response({'status': 'Пароль успешно изменен'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Неверная ссылка для сброса пароля или истек срок действия'}, status=status.HTTP_400_BAD_REQUEST)
+
