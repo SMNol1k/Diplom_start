@@ -1,3 +1,4 @@
+"""Регистрация моделей в админке Django."""
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
@@ -89,6 +90,7 @@ class OrderAdmin(admin.ModelAdmin):
     inlines = [OrderItemInline]
     
     def total_sum(self, obj):
+        """Общая сумма заказа"""
         return obj.total_sum
     total_sum.short_description = 'Общая сумма'
 

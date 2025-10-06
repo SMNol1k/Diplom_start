@@ -1,3 +1,4 @@
+"""Сериализаторы для API системы розничных закупок."""
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
@@ -26,11 +27,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = ['username', 'email', 'password', 'password2', 'first_name', 'last_name', 'company', 'position', 'type']
 
     def validate(self, attrs):
+        """Валидация данных регистрации"""
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Пароли не совпадают."})
         return attrs
 
     def create(self, validated_data):
+        """Создание пользователя"""
         validated_data.pop('password2')
         user = User.objects.create_user(**validated_data)
         return user
@@ -42,6 +45,7 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
+        """Валидация учетных данных"""
         username = attrs.get('username')
         password = attrs.get('password')
 
@@ -132,6 +136,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'price']
 
     def validate(self, attrs):
+        """Валидация позиции заказа"""
         product_info = attrs.get('product_info')
         quantity = attrs.get('quantity')
 
@@ -177,6 +182,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     password2 = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
+        """Валидация нового пароля"""
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Пароли не совпадают."})
         return attrs

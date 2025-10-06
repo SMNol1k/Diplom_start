@@ -1,3 +1,4 @@
+"""Представления API для системы розничных закупок."""
 from rest_framework import viewsets, status, generics, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -42,6 +43,7 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
 
     def create(self, request, *args, **kwargs):
+        """Создание нового пользователя"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -58,6 +60,7 @@ class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
 
     def post(self, request):
+        """Вход пользователя"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
@@ -74,6 +77,7 @@ class LogoutView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Выход пользователя"""
         request.user.auth_token.delete()
         logout(request)
         return Response({'detail': 'Успешный выход'}, status=status.HTTP_200_OK)
@@ -85,6 +89,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
+        """Получить объект пользователя"""
         return self.request.user
 
 
@@ -94,9 +99,11 @@ class ContactViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Получить контакты пользователя"""
         return Contact.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
+        """Сохранить контакт с привязкой к пользователю"""
         serializer.save(user=self.request.user)
 
 
@@ -123,21 +130,12 @@ class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ['product__name', 'product__description', 'model', 'product_parameters__value'] # Добавлено
 
     def get_queryset(self):
+        """Получить информацию о товарах с фильтрацией"""
         queryset = ProductInfo.objects.select_related(
             'product', 'shop', 'product__category'
         ).prefetch_related(
             'product_parameters__parameter'
         ).filter(shop__state=True)
-
-        # # Фильтрация по магазину
-        # shop_id = self.request.query_params.get('shop_id')
-        # if shop_id:
-        #     queryset = queryset.filter(shop_id=shop_id)
-
-        # # Фильтрация по категории
-        # category_id = self.request.query_params.get('category_id')
-        # if category_id:
-        #     queryset = queryset.filter(product__category_id=category_id)
 
         return queryset
 
@@ -256,6 +254,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Получить заказы пользователя или поставщика"""
         user = self.request.user
         queryset = Order.objects.exclude(status='basket').select_related('contact', 'user').prefetch_related('order_items__product_info__product')
         
@@ -588,6 +587,7 @@ class PasswordResetConfirmView(generics.GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = PasswordResetConfirmSerializer
     def post(self, request, uidb64, token):
+        """Подтверждение сброса пароля"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:

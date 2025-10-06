@@ -1,3 +1,4 @@
+"""Модели базы данных для системы розничных закупок."""
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.validators import UnicodeUsernameValidator
@@ -63,6 +64,7 @@ class User(AbstractUser):
         ordering = ['id']
 
     def __str__(self):
+        """Строковое представление пользователя"""
         return f'{self.username} ({self.get_type_display()})'
 
 
@@ -81,6 +83,7 @@ class Shop(models.Model):
         ordering = ['name']
 
     def __str__(self):
+        """Строковое представление магазина"""
         return self.name
 
 
@@ -97,6 +100,7 @@ class Category(models.Model):
         ordering = ['name']
 
     def __str__(self):
+        """Строковое представление категории"""
         return self.name
 
 
@@ -114,6 +118,7 @@ class Product(models.Model):
         ordering = ['name']
 
     def __str__(self):
+        """Строковое представление товара"""
         return self.name
 
 
@@ -137,6 +142,7 @@ class ProductInfo(models.Model):
         ]
 
     def __str__(self):
+        """Строковое представление информации о товаре"""
         return f'{self.product.name} ({self.shop.name})'
 
 
@@ -152,6 +158,7 @@ class Parameter(models.Model):
         ordering = ['name']
 
     def __str__(self):
+        """Строковое представление параметра"""
         return self.name
 
 
@@ -171,6 +178,7 @@ class ProductParameter(models.Model):
         ]
 
     def __str__(self):
+        """Строковое представление параметра товара"""
         return f'{self.parameter.name}: {self.value}'
 
 
@@ -196,6 +204,7 @@ class Contact(models.Model):
         verbose_name_plural = 'Контакты'
 
     def __str__(self):
+        """Строковое представление контакта"""
         return f'{self.city}, {self.street} {self.house} ({self.first_name} {self.last_name})'
 
 
@@ -214,6 +223,7 @@ class Order(models.Model):
         ordering = ['-dt']
 
     def __str__(self):
+        """Строковое представление заказа"""
         return f'Заказ №{self.id} от {self.dt.strftime("%d.%m.%Y")}'
 
     @property
@@ -239,6 +249,7 @@ class OrderItem(models.Model):
         ]
 
     def __str__(self):
+        """Строковое представление позиции заказа"""
         return f'{self.product_info.product.name} x {self.quantity}'
 
     @property
