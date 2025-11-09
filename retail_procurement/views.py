@@ -143,13 +143,25 @@ class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
 class BasketViewSet(viewsets.ViewSet):
     """ViewSet для управления корзиной"""
     permission_classes = [IsAuthenticated]
-
+    
+    def get_basket_queryset(self):
+        """Получить корзину с оптимизированной загрузкой связанных данных"""
+        return Order.objects.filter(
+            user=self.request.user,
+            status='basket'
+        ).prefetch_related(
+            'order_items__product_info__product', 
+            'order_items__product_info__shop'      
+        ).select_related('contact')                  
+    
     def list(self, request):
         """Получить корзину"""
-        basket, created = Order.objects.get_or_create(
-            user=request.user,
-            status='basket'
-        )
+        try:
+            basket = self.get_basket_queryset().first()  # Используем оптимизированный QuerySet
+            if not basket:
+                basket = Order.objects.create(user=request.user, status='basket')
+        except Order.DoesNotExist:
+            basket = Order.objects.create(user=request.user, status='basket')
         serializer = OrderSerializer(basket)
         return Response(serializer.data)
 
