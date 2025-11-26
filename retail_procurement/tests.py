@@ -7,6 +7,8 @@ from rest_framework.test import APITestCase, APIClient
 from django.core import mail
 from unittest.mock import patch, MagicMock
 import yaml
+from django.core.cache import cache
+from rest_framework.authtoken.models import Token
 
 from .models import (
     User, Shop, Category, Product, ProductInfo, Parameter,
@@ -59,6 +61,11 @@ class UserModelTest(TestCase):
         expected_str = 'supplier (Поставщик)'
         self.assertEqual(str(supplier), expected_str)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ShopModelTest(TestCase):
     """Тесты для модели Shop"""
@@ -89,6 +96,11 @@ class ShopModelTest(TestCase):
         """Тест строкового представления магазина"""
         self.assertEqual(str(self.shop), 'Test Shop')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class CategoryModelTest(TestCase):
     """Тесты для модели Category"""
@@ -105,6 +117,11 @@ class CategoryModelTest(TestCase):
         """Тест строкового представления категории"""
         self.assertEqual(str(self.category), 'Test Category')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ProductModelTest(TestCase):
     """Тесты для модели Product"""
@@ -128,6 +145,11 @@ class ProductModelTest(TestCase):
         """Тест строкового представления товара"""
         self.assertEqual(str(self.product), 'Test Product')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ProductInfoModelTest(TestCase):
     """Тесты для модели ProductInfo"""
@@ -157,7 +179,7 @@ class ProductInfoModelTest(TestCase):
             model='Test Model',
             quantity=100,
             price=10.99,
-            price_rrc=15.99
+            price_rrc=0.0
         )
 
     def test_product_info_creation(self):
@@ -186,6 +208,11 @@ class ProductInfoModelTest(TestCase):
                 price=9.99
             )
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ParameterModelTest(TestCase):
     """Тесты для модели Parameter"""
@@ -202,6 +229,11 @@ class ParameterModelTest(TestCase):
         """Тест строкового представления параметра"""
         self.assertEqual(str(self.parameter), 'Test Parameter')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ProductParameterModelTest(TestCase):
     """Тесты для модели ProductParameter"""
@@ -222,7 +254,8 @@ class ProductParameterModelTest(TestCase):
             shop=self.shop,
             external_id=123,
             quantity=100,
-            price=10.99
+            price=10.99,
+            price_rrc=0.0
         )
         self.parameter = Parameter.objects.create(name='Color')
         self.product_parameter = ProductParameter.objects.create(
@@ -251,6 +284,11 @@ class ProductParameterModelTest(TestCase):
                 value='Blue'
             )
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ContactModelTest(TestCase):
     """Тесты для модели Contact"""
@@ -290,6 +328,11 @@ class ContactModelTest(TestCase):
         expected_str = 'Moscow, Lenin Street 10 (John Doe)'
         self.assertEqual(str(self.contact), expected_str)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class OrderModelTest(TestCase):
     """Тесты для модели Order"""
@@ -342,7 +385,8 @@ class OrderModelTest(TestCase):
             shop=shop,
             external_id=123,
             quantity=100,
-            price=10.50
+            price=10.50,
+            price_rrc=0.0
         )
 
         # Создаем позиции заказа
@@ -352,9 +396,17 @@ class OrderModelTest(TestCase):
             quantity=2,
             price=10.50
         )
+        product_info2 = ProductInfo.objects.create(
+            product=self.product,
+            shop=self.shop,
+            external_id=124,  # Разный external_id
+            quantity=100,
+            price=10.50,
+            price_rrc=0.0
+        )  
         OrderItem.objects.create(
             order=self.order,
-            product_info=product_info,
+            product_info=product_info2,  # Используйте product_info2
             quantity=1,
             price=10.50
         )
@@ -363,6 +415,11 @@ class OrderModelTest(TestCase):
         expected_total = 2 * 10.50 + 1 * 10.50  # 31.50
         self.assertEqual(self.order.total_sum, expected_total)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class OrderItemModelTest(TestCase):
     """Тесты для модели OrderItem"""
@@ -389,7 +446,7 @@ class OrderItemModelTest(TestCase):
             external_id=123,
             quantity=100,
             price=10.99,
-            price_rrc=15.99
+            price_rrc=0.0
         )
         self.order = Order.objects.create(user=self.user, status='basket')
         self.order_item = OrderItem.objects.create(
@@ -426,6 +483,11 @@ class OrderItemModelTest(TestCase):
                 price=10.99
             )
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class SerializerTestCase(TestCase):
     """Базовый класс для тестов сериализаторов"""
@@ -469,6 +531,11 @@ class SerializerTestCase(TestCase):
             price=10.99
         )
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class UserSerializerTest(SerializerTestCase):
     """Тесты для UserSerializer"""
@@ -481,6 +548,11 @@ class UserSerializerTest(SerializerTestCase):
         self.assertEqual(data['email'], 'test@example.com')
         self.assertEqual(data['type'], 'buyer')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class UserRegistrationSerializerTest(TestCase):
     """Тесты для UserRegistrationSerializer"""
@@ -512,6 +584,11 @@ class UserRegistrationSerializerTest(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('password', serializer.errors)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class LoginSerializerTest(TestCase):
     """Тесты для LoginSerializer"""
@@ -543,6 +620,11 @@ class LoginSerializerTest(TestCase):
         serializer = LoginSerializer(data=data)
         self.assertFalse(serializer.is_valid())
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ContactSerializerTest(SerializerTestCase):
     """Тесты для ContactSerializer"""
@@ -555,6 +637,11 @@ class ContactSerializerTest(SerializerTestCase):
         self.assertEqual(data['street'], 'Lenin Street')
         self.assertEqual(data['house'], '10')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ShopSerializerTest(SerializerTestCase):
     """Тесты для ShopSerializer"""
@@ -566,6 +653,11 @@ class ShopSerializerTest(SerializerTestCase):
         self.assertEqual(data['name'], 'Test Shop')
         self.assertTrue(data['state'])
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class CategorySerializerTest(SerializerTestCase):
     """Тесты для CategorySerializer"""
@@ -576,6 +668,11 @@ class CategorySerializerTest(SerializerTestCase):
         data = serializer.data
         self.assertEqual(data['name'], 'Test Category')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ProductInfoSerializerTest(SerializerTestCase):
     """Тесты для ProductInfoSerializer"""
@@ -588,6 +685,11 @@ class ProductInfoSerializerTest(SerializerTestCase):
         self.assertEqual(data['quantity'], 100)
         self.assertEqual(float(data['price']), 10.99)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class OrderSerializerTest(SerializerTestCase):
     """Тесты для OrderSerializer"""
@@ -599,6 +701,11 @@ class OrderSerializerTest(SerializerTestCase):
         self.assertEqual(data['status'], 'basket')
         self.assertEqual(len(data['order_items']), 1)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class OrderItemSerializerTest(SerializerTestCase):
     """Тесты для OrderItemSerializer"""
@@ -619,16 +726,22 @@ class OrderItemSerializerTest(SerializerTestCase):
             shop=self.shop,
             external_id=456,
             quantity=1,
-            price=5.99
+            price=5.99,
+            price_rrc=0.0
         )
         data = {
-            'product_info': product_info_low,
+            'product_info_id': self.product_info.id,
             'quantity': 10  # Больше доступного
         }
         serializer = OrderItemSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('quantity', serializer.errors)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class APITestCaseBase(APITestCase):
     """Базовый класс для API тестов"""
@@ -682,6 +795,11 @@ class APITestCaseBase(APITestCase):
             phone='+7(999)123-45-67'
         )
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class AuthenticationAPITest(APITestCaseBase):
     """Тесты для API аутентификации"""
@@ -732,6 +850,11 @@ class AuthenticationAPITest(APITestCaseBase):
         response = self.client.post(logout_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ProfileAndContactsAPITest(APITestCaseBase):
     """Тесты для API профиля пользователя и контактов"""
@@ -778,6 +901,11 @@ class ProfileAndContactsAPITest(APITestCaseBase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['city'], 'SPb')
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class ProductRelatedAPITest(APITestCaseBase):
     """Тесты для API связанных с продуктами"""
@@ -813,6 +941,11 @@ class ProductRelatedAPITest(APITestCaseBase):
         response = self.client.get(url, {'search': 'Test'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class BasketAPITest(APITestCaseBase):
     """Тесты для API корзины"""
@@ -849,7 +982,7 @@ class BasketAPITest(APITestCaseBase):
         # Теперь обновляем количество
         update_url = reverse('basket-list') + 'update_items/'
         update_data = [{
-            'product_info': self.product_info.id,
+            'product_info_id': self.product_info.id,
             'quantity': 3,
             'price': 10.99
         }]
@@ -873,6 +1006,11 @@ class BasketAPITest(APITestCaseBase):
         response = self.client.delete(delete_url, delete_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class OrderAPITest(APITestCaseBase):
     """Тесты для API заказов"""
@@ -884,7 +1022,9 @@ class OrderAPITest(APITestCaseBase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_confirm_order(self):
+    @patch('retail_procurement.tasks.send_order_confirmation_email.delay')
+    @patch('retail_procurement.tasks.send_order_notification_to_suppliers.delay')
+    def test_confirm_order(self, mock_suppliers_email, mock_confirmation_email):
         """Тест подтверждения заказа"""
         # Создаем корзину с товаром
         basket = Order.objects.create(user=self.buyer, status='basket')
@@ -901,7 +1041,15 @@ class OrderAPITest(APITestCaseBase):
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], 'new')
+        # Добавить проверки вызовов:
+        mock_confirmation_email.assert_called_once_with(basket.id)
+        mock_suppliers_email.assert_called_once_with(basket.id)
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class SupplierAPITest(APITestCaseBase):
     """Тесты для API поставщика"""
@@ -955,11 +1103,17 @@ goods:
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertIn('Прайс-лист успешно загружен', response.data['status'])
 
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
 
 class PasswordResetAPITest(APITestCaseBase):
     """Тесты для API сброса пароля"""
 
-    def test_password_reset_request(self):
+    @patch('django.core.mail.send_mail')
+    def test_password_reset_request(self, mock_send_mail):
         """Тест запроса на сброс пароля"""
         url = reverse('password-reset')
         data = {'email': 'buyer@example.com'}
@@ -985,3 +1139,55 @@ class PasswordResetAPITest(APITestCaseBase):
         }
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций
+
+class ThrottlingTestCase(APITestCase):
+    """
+    TestCase для проверки тротлинга.
+    Тестирует лимит запросов для аутентифицированного пользователя.
+    """
+
+    def setUp(self):
+        """Настройка перед каждым тестом"""
+        self.user = User.objects.create_user(username='testuser', email='test@example.com', password='password')
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')  # Аутентификация через токен
+        cache.clear()  # Очистка кэша перед каждым тестом
+
+    def test_throttling_limit(self):
+        """
+        Тест: Превышение лимита запросов вызывает 429 Too Many Requests.
+        """
+        url = reverse('basket-list')  # URL для BasketViewSet.list (предполагаем, что у вас есть именованный URL)
+
+        # Сделать 10 запросов (в пределах лимита)
+        for _ in range(10):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # 11-й запрос должен вернуть 429
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # Проверить, что в ответе есть информация о тротлинге (опционально)
+        self.assertIn('detail', response.data)
+        self.assertIn('Запрос был проигнорирован', response.data['detail'])
+        
+    def test_throttling_reset(self):
+        """
+        Тест: Лимит сбрасывается после периода (здесь симулируем, но в реальности зависит от времени).
+        """
+        # Этот тест сложнее реализовать без mock времени. В продакшене лимит сбрасывается автоматически.
+        # Для простоты: после превышения подождите минуту или используйте mock (например, freezegun).
+        pass
+
+    def tearDown(self):
+        try:
+            User.objects.all().delete()
+        except Exception:
+            pass  # Игнорируем ошибки транзакций

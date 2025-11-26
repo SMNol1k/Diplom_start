@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404
 import yaml
 import requests
 from django.core.exceptions import ObjectDoesNotExist
+from rest_framework.throttling import UserRateThrottle
 
 from .models import (
     User, Shop, Category, Product, ProductInfo, Parameter,
@@ -142,6 +143,7 @@ class BasketViewSet(viewsets.ViewSet):
     Корзина — это заказ со статусом 'basket'.
     
     """
+    throttle_classes = [UserRateThrottle]
     permission_classes = [IsAuthenticated]
 
     def get_basket_queryset(self):
@@ -233,14 +235,14 @@ class BasketViewSet(viewsets.ViewSet):
 
         with transaction.atomic():
             for item_data in items_data:
-                product_info = item_data['product_info']
+                product_info_id = item_data['product_info']
                 quantity = item_data['quantity']
                 price = item_data['price']
 
                 order_item = get_object_or_404(
                     OrderItem,
                     order=basket,
-                    product_info=product_info
+                    product_info=product_info_id
                 )
                 order_item.quantity = quantity
                 order_item.price = price
@@ -282,6 +284,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     
     Покупатели видят свои заказы, поставщики — заказы с их товарами.
     """
+    throttle_classes = [UserRateThrottle]
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
@@ -359,6 +362,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
 class SupplierViewSet(viewsets.ViewSet):
     """ViewSet для функций поставщика"""
+    throttle_classes = [UserRateThrottle]
     permission_classes = [IsAuthenticated]
 
     def list(self, request):

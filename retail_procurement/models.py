@@ -132,7 +132,7 @@ class ProductInfo(models.Model):
     model = models.CharField(max_length=100, blank=True, verbose_name='Модель')
     quantity = models.PositiveIntegerField(verbose_name='Количество')
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Цена')
-    price_rrc = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Рекомендуемая розничная цена')
+    price_rrc = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Рекомендуемая розничная цена', default=0.0 )
 
     class Meta:
         verbose_name = 'Информация о товаре'

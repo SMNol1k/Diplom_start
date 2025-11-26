@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
-
+import sys
 from pathlib import Path
 from decouple import config
 import os
@@ -138,6 +138,14 @@ AUTH_USER_MODEL = 'retail_procurement.User'
 
 # REST Framework settings
 REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.UserRateThrottle',  # Для аутентифицированных пользователей
+        'rest_framework.throttling.AnonRateThrottle',  # Для анонимных (опционально)
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'user': '10/minute',  # 10 запросов в минуту на пользователя
+        'anon': '5/minute',   # 5 запросов в минуту на IP (для анонимных)
+    },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
@@ -150,8 +158,11 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 50,
 }
 
+if 'test' in sys.argv:  # Проверяем, что это тесты
+    REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = []  # Отключаем тротлинг
+
 # Email settings (configure for production)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = ('django.core.mail.backends.console.EmailBackend', 'django.core.mail.backends.locmem.EmailBackend') 
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USE_TLS = True
