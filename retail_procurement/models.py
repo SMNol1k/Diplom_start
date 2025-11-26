@@ -58,6 +58,11 @@ class User(AbstractUser):
 
     REQUIRED_FIELDS = ['email']
 
+    avatar = models.URLField(blank=True, null=True, verbose_name='Аватар')  # Для фото из соц. сети
+    def save(self, *args, **kwargs):
+        # Логика для обновления avatar из соц. данных
+        super().save(*args, **kwargs)
+    
     class Meta:
         verbose_name = 'Пользователь'
         verbose_name_plural = 'Пользователи'

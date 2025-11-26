@@ -5,8 +5,9 @@ from .views import (
     RegisterView, LoginView, LogoutView, UserProfileView,
     ContactViewSet, CategoryViewSet, ShopViewSet, ProductInfoViewSet,
     BasketViewSet, OrderViewSet, SupplierViewSet, password_reset_request,
-    PasswordResetConfirmView
+    PasswordResetConfirmView, 
 )
+from .social_auth import SocialAuthView
 
 router = DefaultRouter()
 router.register(r'contacts', ContactViewSet, basename='contact')
@@ -19,6 +20,7 @@ router.register(r'supplier', SupplierViewSet, basename='supplier')
 
 urlpatterns = [
     # Аутентификация
+    path('auth/complete/<str:backend>/', SocialAuthView.as_view(), name='social_auth_complete'),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/login/', LoginView.as_view(), name='login'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),

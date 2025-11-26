@@ -1177,7 +1177,7 @@ class ThrottlingTestCase(APITestCase):
         # Проверить, что в ответе есть информация о тротлинге (опционально)
         self.assertIn('detail', response.data)
         self.assertIn('Запрос был проигнорирован', response.data['detail'])
-        
+
     def test_throttling_reset(self):
         """
         Тест: Лимит сбрасывается после периода (здесь симулируем, но в реальности зависит от времени).
@@ -1191,3 +1191,12 @@ class ThrottlingTestCase(APITestCase):
             User.objects.all().delete()
         except Exception:
             pass  # Игнорируем ошибки транзакций
+
+class SocialAuthTest(APITestCase):
+    def test_google_auth(self):
+        """Тест аутентификации через Google"""
+        with patch('social_core.backends.google.GoogleOAuth2.auth_complete') as mock_auth:
+            mock_auth.return_value = User.objects.create_user(username='test@example.com', email='test@example.com')
+            response = self.client.get('/api/auth/complete/google-oauth2/')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertIn('token', response.data)
