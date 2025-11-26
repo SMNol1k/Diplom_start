@@ -134,7 +134,14 @@ class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 class BasketViewSet(viewsets.ViewSet):
-    """ViewSet для управления корзиной"""
+    """    
+    
+    API для управления корзиной покупок.
+    
+    Позволяет просматривать, добавлять, обновлять и удалять товары в корзине.
+    Корзина — это заказ со статусом 'basket'.
+    
+    """
     permission_classes = [IsAuthenticated]
 
     def get_basket_queryset(self):
@@ -148,7 +155,11 @@ class BasketViewSet(viewsets.ViewSet):
         ).select_related('contact')
 
     def list(self, request):
-        """Получить корзину"""
+        """
+        Получить содержимое корзины текущего пользователя.
+        
+        Возвращает заказ со статусом 'basket' с вложенными товарами.
+        """
         try:
             basket = self.get_basket_queryset().first()  # Используем оптимизированный QuerySet
             if not basket:
@@ -159,7 +170,12 @@ class BasketViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        """Добавить товар в корзину"""
+        """
+        Добавить товар(ы) в корзину.
+        
+        Принимает список или одиночный объект с product_info_id, quantity и price.
+        Если товар уже в корзине, увеличивает количество.
+        """
         basket, created = Order.objects.get_or_create(
             user=request.user,
             status='basket'
@@ -199,7 +215,11 @@ class BasketViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['put'])
     def update_items(self, request):
-        """Обновить количество товаров в корзине"""
+        """
+        Обновить количество и цену товаров в корзине.
+        
+        Принимает список объектов с product_info, quantity и price.
+        """
         basket = get_object_or_404(Order, user=request.user, status='basket')
 
         # Используем OrderItemSerializer для валидации и установки цены
@@ -231,7 +251,11 @@ class BasketViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['delete'])
     def delete_items(self, request):
-        """Удалить товары из корзины"""
+        """
+        Удалить товары из корзины.
+        
+        Принимает список ID товаров (product_info_id) для удаления.
+        """
         basket = get_object_or_404(Order, user=request.user, status='basket')
 
         items_to_delete_ids = request.data.get('items', [])
@@ -253,7 +277,11 @@ class BasketViewSet(viewsets.ViewSet):
         return Response(basket_serializer.data, status=status.HTTP_200_OK)
 
 class OrderViewSet(viewsets.ModelViewSet):
-    """ViewSet для управления заказами"""
+    """
+    API для управления заказами.
+    
+    Покупатели видят свои заказы, поставщики — заказы с их товарами.
+    """
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
@@ -271,7 +299,12 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
-        """Подтвердить заказ"""
+        """
+        Подтвердить заказ из корзины.
+        
+        Проверяет наличие товаров, уменьшает склад, меняет статус на 'new'.
+        Отправляет email подтверждения и уведомления поставщикам.
+        """
         basket = get_object_or_404(Order, pk=pk, user=request.user, status='basket')
 
         contact_id = request.data.get('contact_id')
@@ -310,6 +343,11 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def update_status(self, request, pk=None):
+        """
+        Обновить статус заказа (для поставщиков).
+        
+        Принимает новый статус и отправляет email клиенту.
+        """
         order = self.get_object()
         new_status = request.data.get('status')
         if new_status:
@@ -497,7 +535,11 @@ class SupplierViewSet(viewsets.ViewSet):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def password_reset_request(request):
-    """Запрос на сброс пароля"""
+    """
+    Запрос на сброс пароля.
+    
+    Отправляет email с ссылкой для сброса пароля на указанный email.
+    """
     serializer = PasswordResetSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 

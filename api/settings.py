@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'retail_procurement',
     'django_filters',
     'celery',
+    'drf_spectacular',
 ]
 
 SITE_ID = 1
@@ -137,6 +138,7 @@ AUTH_USER_MODEL = 'retail_procurement.User'
 
 # REST Framework settings
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
@@ -164,3 +166,12 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Europe/Moscow'
+
+#Spectacular Configurations
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Retail Procurement API',
+    'DESCRIPTION': 'API для системы розничных закупок',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,  # Не включать схему в каждый ответ
+    'COMPONENT_SPLIT_REQUEST': True,  # Разделять запросы/ответы в схеме
+}
