@@ -7,7 +7,7 @@ from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import login, logout
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
-from django.utils.encoding import force_str 
+from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.core.mail import send_mail
 from django.conf import settings
@@ -18,16 +18,17 @@ import requests
 from django.core.exceptions import ObjectDoesNotExist
 
 from .models import (
-    User, Shop, Category, Product, ProductInfo, Parameter, 
+    User, Shop, Category, Product, ProductInfo, Parameter,
     ProductParameter, Contact, Order, OrderItem
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer,
-    ContactSerializer, ShopSerializer, CategorySerializer, 
+    ContactSerializer, ShopSerializer, CategorySerializer,
     ProductInfoSerializer, OrderSerializer,
     OrderItemCreateSerializer, PasswordResetSerializer,
     PasswordResetConfirmSerializer
 )
+from .tasks import send_order_confirmation_email, send_order_notification_to_suppliers, send_order_status_email
 
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.encoding import force_bytes
@@ -53,7 +54,6 @@ class RegisterView(generics.CreateAPIView):
             'token': token.key
         }, status=status.HTTP_201_CREATED)
 
-
 class LoginView(generics.GenericAPIView):
     """Вход пользователя"""
     permission_classes = [AllowAny]
@@ -71,7 +71,6 @@ class LoginView(generics.GenericAPIView):
             'token': token.key
         })
 
-
 class LogoutView(generics.GenericAPIView):
     """Выход пользователя"""
     permission_classes = [IsAuthenticated]
@@ -82,7 +81,6 @@ class LogoutView(generics.GenericAPIView):
         logout(request)
         return Response({'detail': 'Успешный выход'}, status=status.HTTP_200_OK)
 
-
 class UserProfileView(generics.RetrieveUpdateAPIView):
     """Профиль пользователя"""
     serializer_class = UserSerializer
@@ -92,7 +90,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         """Получить объект пользователя"""
         return self.request.user
 
-
 class ContactViewSet(viewsets.ModelViewSet):
     """ViewSet для управления контактами"""
     serializer_class = ContactSerializer
@@ -100,12 +97,11 @@ class ContactViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Получить контакты пользователя"""
-        return Contact.objects.filter(user=self.request.user)
+        return Contact.objects.filter(user=self.request.user).order_by('id')  # Добавляем сортировку
 
     def perform_create(self, serializer):
         """Сохранить контакт с привязкой к пользователю"""
         serializer.save(user=self.request.user)
-
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для просмотра категорий"""
@@ -113,13 +109,11 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated]
 
-
 class ShopViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для просмотра магазинов"""
     queryset = Shop.objects.filter(state=True)
     serializer_class = ShopSerializer
     permission_classes = [IsAuthenticated]
-
 
 class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для просмотра товаров"""
@@ -135,25 +129,24 @@ class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
             'product', 'shop', 'product__category'
         ).prefetch_related(
             'product_parameters__parameter'
-        ).filter(shop__state=True)
+        ).filter(shop__state=True).order_by('id')  # Добавляем сортировку
 
         return queryset
-
 
 class BasketViewSet(viewsets.ViewSet):
     """ViewSet для управления корзиной"""
     permission_classes = [IsAuthenticated]
-    
+
     def get_basket_queryset(self):
         """Получить корзину с оптимизированной загрузкой связанных данных"""
         return Order.objects.filter(
             user=self.request.user,
             status='basket'
         ).prefetch_related(
-            'order_items__product_info__product', 
-            'order_items__product_info__shop'      
-        ).select_related('contact')                  
-    
+            'order_items__product_info__product',
+            'order_items__product_info__shop'
+        ).select_related('contact')
+
     def list(self, request):
         """Получить корзину"""
         try:
@@ -174,19 +167,19 @@ class BasketViewSet(viewsets.ViewSet):
         # Используем OrderItemSerializer для валидации и установки цены
         # Передаем order_id для контекста
         serializer = OrderItemCreateSerializer(
-            data=request.data, 
+            data=request.data,
             many=isinstance(request.data, list),
             context={'request': request}
-            )
+        )
         serializer.is_valid(raise_exception=True)
 
         items_data = serializer.validated_data if isinstance(serializer.validated_data, list) else [serializer.validated_data]
 
         with transaction.atomic():
             for item_data in items_data:
-                product_info = item_data['product_info_id'] # уже объект благодаря PrimaryKeyRelatedField
+                product_info = get_object_or_404(ProductInfo, id=item_data['product_info_id'])
                 quantity = item_data['quantity']
-                price = item_data['price']
+                price = item_data.get('price', 0.0)
 
                 order_item, created = OrderItem.objects.get_or_create(
                     order=basket,
@@ -210,7 +203,7 @@ class BasketViewSet(viewsets.ViewSet):
         basket = get_object_or_404(Order, user=request.user, status='basket')
 
         # Используем OrderItemSerializer для валидации и установки цены
-        serializer = OrderItemCreateSerializer(data=request.data, 
+        serializer = OrderItemCreateSerializer(data=request.data,
                                                many=isinstance(request.data, list),
                                                context={'request': request}
                                                )
@@ -225,8 +218,8 @@ class BasketViewSet(viewsets.ViewSet):
                 price = item_data['price']
 
                 order_item = get_object_or_404(
-                    OrderItem, 
-                    order=basket, 
+                    OrderItem,
+                    order=basket,
                     product_info=product_info
                 )
                 order_item.quantity = quantity
@@ -240,7 +233,7 @@ class BasketViewSet(viewsets.ViewSet):
     def delete_items(self, request):
         """Удалить товары из корзины"""
         basket = get_object_or_404(Order, user=request.user, status='basket')
-        
+
         items_to_delete_ids = request.data.get('items', [])
         if not items_to_delete_ids:
             return Response({'error': 'Не указаны товары для удаления'}, status=status.HTTP_400_BAD_REQUEST)
@@ -252,13 +245,12 @@ class BasketViewSet(viewsets.ViewSet):
         ).count()
 
         if existing_items_count != len(items_to_delete_ids):
-            return Response({'error': 'Один или несколько товаров не найдены в вашей корзине'}, status=status.HTTP_400_BAD_REQUEST)        
+            return Response({'error': 'Один или несколько товаров не найдены в вашей корзине'}, status=status.HTTP_400_BAD_REQUEST)
 
         OrderItem.objects.filter(order=basket, product_info_id__in=items_to_delete_ids).delete()
 
         basket_serializer = OrderSerializer(basket)
         return Response(basket_serializer.data, status=status.HTTP_200_OK)
-
 
 class OrderViewSet(viewsets.ModelViewSet):
     """ViewSet для управления заказами"""
@@ -269,7 +261,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Получить заказы пользователя или поставщика"""
         user = self.request.user
         queryset = Order.objects.exclude(status='basket').select_related('contact', 'user').prefetch_related('order_items__product_info__product')
-        
+
         if user.type == 'supplier' and hasattr(user, 'shop'):
             # Поставщик видит заказы, содержащие его товары
             return queryset.filter(order_items__product_info__shop=user.shop).distinct().order_by('-dt')
@@ -307,71 +299,25 @@ class OrderViewSet(viewsets.ModelViewSet):
             basket.status = 'new'
             basket.save()
 
-            # Отправка email клиенту
-            self._send_order_confirmation_email(basket)
+            # Отправка email клиенту асинхронно
+            send_order_confirmation_email.delay(basket.id)
 
-            # Отправка email администраторам поставщиков
-            self._send_order_notification_to_suppliers(basket)
+            # Отправка email администраторам поставщиков асинхронно
+            send_order_notification_to_suppliers.delay(basket.id)
 
         serializer = self.get_serializer(basket)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def _send_order_confirmation_email(self, order):
-        """Отправка подтверждения заказа клиенту"""
-        order_items = order.order_items.select_related('product_info__product').all()
-        subject = f'Заказ №{order.id} принят'
-        message = f'''
-        Здравствуйте, {order.user.first_name or order.user.username}!
-
-        Ваш заказ №{order.id} успешно оформлен.
-        
-        Товары:
-        '''
-        for item in order_items:
-            message += f'\n- {item.product_info.product.name} x {item.quantity} = {item.total_price} руб.'
-
-        message += f'\n\nОбщая сумма: {order.total_sum} руб.'
-        message += f'\n\nАдрес доставки: {order.contact}'
-
-        send_mail(
-            subject,
-            message,
-            settings.DEFAULT_FROM_EMAIL,
-            [order.user.email],
-            fail_silently=True,
-        )
-
-    def _send_order_notification_to_suppliers(self, order):
-        """Отправка уведомления о заказе поставщикам"""
-        order_items = order.order_items.select_related('product_info__shop', 'product_info__product').all()
-        
-        shops = set()
-        for item in order.order_items:
-            shops.add(item.product_info.shop)
-
-        for shop in shops:
-            shop_items = [item for item in order_items if item.product_info.shop == shop]
-            
-            subject = f'Новый заказ №{order.id}'
-            message = f'''
-            Новый заказ №{order.id} от {order.dt.strftime("%d.%m.%Y %H:%M")}
-
-            Товары:
-            '''
-            for item in shop_items:
-                message += f'\n- {item.product_info.product.name} (ID: {item.product_info.external_id}) x {item.quantity}'
-
-            message += f'\n\nКлиент: {order.user.email}'
-            message += f'\nАдрес доставки: {order.contact}'
-
-            send_mail(
-                subject,
-                message,
-                settings.DEFAULT_FROM_EMAIL,
-                [shop.user.email],
-                fail_silently=True,
-            )
-
+    @action(detail=True, methods=['post'])
+    def update_status(self, request, pk=None):
+        order = self.get_object()
+        new_status = request.data.get('status')
+        if new_status:
+            order.status = new_status
+            order.save()
+            send_order_status_email.delay(order.id)
+            return Response({'status': 'Order status updated and email sent.'})
+        return Response({'error': 'No status provided.'}, status=400)
 
 class SupplierViewSet(viewsets.ViewSet):
     """ViewSet для функций поставщика"""
@@ -386,7 +332,7 @@ class SupplierViewSet(viewsets.ViewSet):
             shop = request.user.shop
         except Shop.DoesNotExist:
             return Response({'error': 'У пользователя нет магазина'}, status=status.HTTP_404_NOT_FOUND)
-        
+
         serializer = ShopSerializer(shop)
         return Response(serializer.data)
 
@@ -404,7 +350,7 @@ class SupplierViewSet(viewsets.ViewSet):
         state = request.data.get('state')
         if state is None or not isinstance(state, bool):
             return Response({'error': 'Не указан или неверный параметр state (ожидается true/false)'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         shop.state = state
         shop.save()
 
@@ -420,7 +366,7 @@ class SupplierViewSet(viewsets.ViewSet):
             shop = request.user.shop
         except Shop.DoesNotExist:
             return Response({'error': 'У пользователя нет магазина'}, status=status.HTTP_404_NOT_FOUND)
-        
+
         url = request.data.get('url')
         if not url:
             return Response({'error': 'Не указан URL прайс-листа'}, status=status.HTTP_400_BAD_REQUEST)
@@ -448,7 +394,7 @@ class SupplierViewSet(viewsets.ViewSet):
             print(f"Обновлено имя магазина: {shop.name}")
 
         # Обрабатываем категории: создаём/обновляем по name, маппим по id из YAML
-        categories_map = {} 
+        categories_map = {}
         current_shop_categories = set(shop.categories.values_list('id', flat=True))
         new_categories_ids = set()
 
@@ -516,7 +462,7 @@ class SupplierViewSet(viewsets.ViewSet):
                             'model': item_data.get('model', ''),
                             'quantity': item_data['quantity'],
                             'price': float(item_data['price']),
-                            'price_rrc': float(item_data.get('price_rrc', 0)) if item_data.get('price_rrc') is not None else None
+                            'price_rrc': float(item_data.get('price_rrc', 0.0)) if item_data.get('price_rrc') is not None else 0.0
                         }
                     )
                     if created:
@@ -548,14 +494,13 @@ class SupplierViewSet(viewsets.ViewSet):
             'message': f'Обработано {len(items)} товаров, обновлено {updated_count} в магазине "{shop.name}"'
         }, status=status.HTTP_200_OK)
 
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def password_reset_request(request):
     """Запрос на сброс пароля"""
     serializer = PasswordResetSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    
+
     email = serializer.validated_data['email']
     try:
         user = User.objects.get(email=email)
@@ -593,7 +538,6 @@ def password_reset_request(request):
         print(f"Ошибка при отправке письма для сброса пароля: {e}")
         return Response({'error': 'Произошла ошибка при отправке письма'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 class PasswordResetConfirmView(generics.GenericAPIView):
     """Подтверждение сброса пароля"""
     permission_classes = [AllowAny]
@@ -613,4 +557,3 @@ class PasswordResetConfirmView(generics.GenericAPIView):
             return Response({'status': 'Пароль успешно изменен'}, status=status.HTTP_200_OK)
         else:
             return Response({'error': 'Неверная ссылка для сброса пароля или истек срок действия'}, status=status.HTTP_400_BAD_REQUEST)
-
