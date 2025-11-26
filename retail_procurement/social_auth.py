@@ -5,7 +5,7 @@ from social_django.utils import load_strategy
 from social_core.backends.oauth import BaseOAuth2
 from django.contrib.auth import login
 from rest_framework.authtoken.models import Token
-
+from .serializers import UserSerializer
 class SocialAuthView(APIView):
     """
     Представление для завершения соц. аутентификации и выдачи токена.
