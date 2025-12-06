@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'celery',
     'drf_spectacular',
     'social_django',
+    'versatileimagefield',
 ]
 
 SITE_ID = 1

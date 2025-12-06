@@ -3,7 +3,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.utils.translation import gettext_lazy as _
-
+from versatileimagefield.fields import VersatileImageField
 
 USER_TYPE_CHOICES = (
     ('buyer', 'Покупатель'),
@@ -58,7 +58,7 @@ class User(AbstractUser):
 
     REQUIRED_FIELDS = ['email']
 
-    avatar = models.URLField(blank=True, null=True, verbose_name='Аватар')  # Для фото из соц. сети
+    avatar = VersatileImageField(upload_to='avatars/', blank=True)  # Для фото из соц. сети
     def save(self, *args, **kwargs):
         # Логика для обновления avatar из соц. данных
         super().save(*args, **kwargs)
@@ -138,7 +138,8 @@ class ProductInfo(models.Model):
     quantity = models.PositiveIntegerField(verbose_name='Количество')
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Цена')
     price_rrc = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Рекомендуемая розничная цена', default=0.0 )
-
+    image = VersatileImageField(upload_to='products/', blank=True, null=True, verbose_name='Изображение товара')
+    
     class Meta:
         verbose_name = 'Информация о товаре'
         verbose_name_plural = 'Информация о товарах'

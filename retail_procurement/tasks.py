@@ -3,6 +3,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from .models import Order
 import logging
+from .models import User
 
 logger = logging.getLogger(__name__)
 
@@ -118,3 +119,12 @@ def send_order_notification_to_suppliers(order_id):
         logger.warning(f"Order {order_id} not found")
     except Exception as e:
         logger.error(f"Error sending email for order {order_id}: {e}")
+
+
+@shared_task
+def process_avatar(user_id):
+    user = User.objects.get(id=user_id)
+    # Генерация миниатюр
+    user.avatar.create_versatileimagefield('thumbnail', size=(100, 100))
+    user.avatar.create_versatileimagefield('medium', size=(300, 300))
+    user.save()
