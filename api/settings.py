@@ -13,7 +13,14 @@ import sys
 from pathlib import Path
 from decouple import config
 import os
+import rollbar
+from rollbar.contrib.django.middleware import RollbarNotifierMiddleware
 
+rollbar.init(
+    access_token=config('ROLLBAR_ACCESS_TOKEN'),  # Получите токен из проекта Rollbar
+    environment='development',
+    root=os.path.dirname(os.path.abspath(__file__)),  # Корень проекта
+)
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -61,6 +68,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'rollbar.contrib.django.middleware.RollbarNotifierMiddleware',
 ]
 
 ROOT_URLCONF = 'api.urls'

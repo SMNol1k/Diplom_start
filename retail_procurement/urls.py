@@ -5,7 +5,7 @@ from .views import (
     RegisterView, LoginView, LogoutView, UserProfileView,
     ContactViewSet, CategoryViewSet, ShopViewSet, ProductInfoViewSet,
     BasketViewSet, OrderViewSet, SupplierViewSet, password_reset_request,
-    PasswordResetConfirmView, 
+    PasswordResetConfirmView,
 )
 from .social_auth import SocialAuthView
 
@@ -17,6 +17,7 @@ router.register(r'products', ProductInfoViewSet, basename='product')
 router.register(r'basket', BasketViewSet, basename='basket')
 router.register(r'orders', OrderViewSet, basename='order')
 router.register(r'supplier', SupplierViewSet, basename='supplier')
+
 
 urlpatterns = [
     # Аутентификация

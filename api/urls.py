@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.urls import path, include
 from retail_procurement.views import PasswordResetConfirmView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
-
+from retail_procurement.views import TestErrorView
 urlpatterns = [
     path('jet/', include('jet.urls', namespace='jet')),
     path('admin/', admin.site.urls),
@@ -13,4 +13,5 @@ urlpatterns = [
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),  # Swagger UI
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),  # Альтернативный Redoc UI
     path('api/auth/', include('social_django.urls', namespace='social')),  # URL для соц. аутентификации
+    path('test-error/', TestErrorView.as_view(), name='test_error'),
 ]

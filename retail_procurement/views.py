@@ -17,6 +17,7 @@ import yaml
 import requests
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework.throttling import UserRateThrottle
+from rest_framework.views import APIView
 
 from .models import (
     User, Shop, Category, Product, ProductInfo, Parameter,
@@ -603,3 +604,9 @@ class PasswordResetConfirmView(generics.GenericAPIView):
             return Response({'status': 'Пароль успешно изменен'}, status=status.HTTP_200_OK)
         else:
             return Response({'error': 'Неверная ссылка для сброса пароля или истек срок действия'}, status=status.HTTP_400_BAD_REQUEST)
+        
+class TestErrorView(APIView):
+    def get(self, request):
+        # Намеренно вызываем исключение для тестирования Rollbar
+        raise ValueError("Это тестовое исключение для Rollbar!")
+        return Response({"message": "Это не должно выполниться"}, status=status.HTTP_200_OK)
