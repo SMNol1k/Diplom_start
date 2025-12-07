@@ -38,6 +38,9 @@ from django.utils.http import urlsafe_base64_encode
 from django.template.loader import render_to_string
 from django.urls import reverse # Для генерации URL
 from django.contrib.sites.shortcuts import get_current_site # Для получения домена сайта
+from cachalot.api import invalidate
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 
 class RegisterView(generics.CreateAPIView):
     """Регистрация нового пользователя"""
@@ -134,7 +137,12 @@ class ProductInfoViewSet(viewsets.ReadOnlyModelViewSet):
         ).filter(shop__state=True).order_by('id')  # Добавляем сортировку
 
         return queryset
+    
+    @method_decorator(cache_page(1800))  # 30 мин TTL для всего view
+    def list(self, request, *args, **kwargs):
 
+        return super().list(request, *args, **kwargs)
+    
 class BasketViewSet(viewsets.ViewSet):
     """    
     
@@ -214,6 +222,7 @@ class BasketViewSet(viewsets.ViewSet):
                     order_item.save()
 
         basket_serializer = OrderSerializer(basket)
+        invalidate(Order)  # Инвалидировать кэш для Order после добавления товаров
         return Response(basket_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['put'])
@@ -250,6 +259,7 @@ class BasketViewSet(viewsets.ViewSet):
                 order_item.save()
 
         basket_serializer = OrderSerializer(basket)
+        invalidate(Order)  # Инвалидировать кэш для Order после добавления товаров
         return Response(basket_serializer.data)
 
     @action(detail=False, methods=['delete'])
@@ -277,6 +287,7 @@ class BasketViewSet(viewsets.ViewSet):
         OrderItem.objects.filter(order=basket, product_info_id__in=items_to_delete_ids).delete()
 
         basket_serializer = OrderSerializer(basket)
+        invalidate(Order)  # Инвалидировать кэш для Order после добавления товаров
         return Response(basket_serializer.data, status=status.HTTP_200_OK)
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -335,6 +346,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             basket.contact = contact
             basket.status = 'new'
             basket.save()
+            invalidate(Order)  # Инвалидировать кэш для Order
+            invalidate(ProductInfo)  # Инвалидировать кэш для ProductInfo (изменение quantity)
 
             # Отправка email клиенту асинхронно
             send_order_confirmation_email.delay(basket.id)
@@ -357,6 +370,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if new_status:
             order.status = new_status
             order.save()
+            invalidate(Order)  # Инвалидировать кэш для Order
             send_order_status_email.delay(order.id)
             return Response({'status': 'Order status updated and email sent.'})
         return Response({'error': 'No status provided.'}, status=400)
@@ -396,6 +410,7 @@ class SupplierViewSet(viewsets.ViewSet):
 
         shop.state = state
         shop.save()
+        invalidate(Shop)
 
         return Response({'status': 'Статус обновлен', 'state': shop.state}, status=status.HTTP_200_OK)
 
@@ -531,6 +546,11 @@ class SupplierViewSet(viewsets.ViewSet):
                     print(f"Ошибка при обработке товара {item_data.get('id', 'Unknown')}: {e}")
                     continue
 
+        invalidate(ProductInfo)  # Инвалидировать кэш для ProductInfo
+        invalidate(Product)  # Для Product
+        invalidate(Category)  # Для Category
+        invalidate(Parameter)  # Для Parameter
+        invalidate(ProductParameter)  # Для ProductParameter
         return Response({
             'status': 'Прайс-лист успешно загружен',
             'updated_products': updated_count,

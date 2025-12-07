@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'social_django',
     'versatileimagefield',
+    'cachalot',
 ]
 
 SITE_ID = 1
@@ -199,6 +200,15 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,  # Не включать схему в каждый ответ
     'COMPONENT_SPLIT_REQUEST': True,  # Разделять запросы/ответы в схеме
 }
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/0', 
+    }
+}
+
+CACHALOT_CACHE_TIMEOUT = 3600
 
 # Социальная аутентификация
 SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = 'your-google-client-id'
