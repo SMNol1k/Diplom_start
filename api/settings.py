@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'social_django',
     'versatileimagefield',
     'cachalot',
+    'silk',
 ]
 
 SITE_ID = 1
@@ -70,6 +71,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'rollbar.contrib.django.middleware.RollbarNotifierMiddleware',
+    'silk.middleware.SilkyMiddleware',
 ]
 
 ROOT_URLCONF = 'api.urls'
@@ -250,3 +252,6 @@ JET_CHANGEFORM_SPLITTED_TAB = True  # Разделение вкладок в ф�
 JET_LOAD_MINIFIED_ADMIN_UI = True
 JET_USE_CUSTOM_FONT = False
 FAVICON_URL = '/static/favicon.ico'
+
+SILKY_PYTHON_PROFILER = True  # Включает профилирование Python-кода
+SILKY_PYTHON_PROFILER_BINARY = True  # Для бинарных профилей

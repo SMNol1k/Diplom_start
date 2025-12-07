@@ -74,7 +74,7 @@ coverage.xml
 */migrations/*
 .log
 db.sqlite3
-
+*.prof
 
 # Scrapy stuff:
 .scrapy

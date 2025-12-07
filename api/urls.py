@@ -14,4 +14,5 @@ urlpatterns = [
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),  # Альтернативный Redoc UI
     path('api/auth/', include('social_django.urls', namespace='social')),  # URL для соц. аутентификации
     path('test-error/', TestErrorView.as_view(), name='test_error'),
+    path('silk/', include('silk.urls', namespace='silk')),
 ]
